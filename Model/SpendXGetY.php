@@ -52,17 +52,17 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
     {
         $this->_debug = (bool)$this->_helperData->getConfig('buyxgety/general/debug');
 
-        $productYSku            = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/spendproductysku'));
-        $spendCartMaxRequired   = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/spendcartylimit'), true); // 0 => no upper bound
-        $spendCartMinRequired   = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/spendcarttotalrequired'), true);
-        $productYDescription    = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/productydescription'), true);
+        $productYSku          = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/spendproductysku'));
+        $spendCartMaxRequired = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/spendcartylimit'), true); // 0 => no upper bound
+        $spendCartMinRequired = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/spendcarttotalrequired'), true);
+        $productYDescription  = $this->csvToArray($this->_helperData->getConfig('buyxgety/spendxgety/productydescription'), true);
 
         $config = [
             'spendxgety' => [
-                'productysku'            => $productYSku ?: [],
-                'spendcartmaxrequired'   => $spendCartMaxRequired ?: [],
-                'spendcartminrequired'   => $spendCartMinRequired ?: [],
-                'productydescription'    => $productYDescription ?: [],
+                'productysku'          => $productYSku ?: [],
+                'spendcartmaxrequired' => $spendCartMaxRequired ?: [],
+                'spendcartminrequired' => $spendCartMinRequired ?: [],
+                'productydescription'  => $productYDescription ?: [],
             ]
         ];
 
@@ -74,35 +74,51 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
     {
         $cfg = $this->_buyxgety['config']['spendxgety'] ?? [];
 
-        foreach (['productysku','spendcartminrequired'] as $k) {
-            if (empty($cfg[$k]) || !is_array($cfg[$k])) return false;
+        foreach (['productysku', 'spendcartminrequired'] as $k) {
+            if (empty($cfg[$k]) || !is_array($cfg[$k])) {
+                return false;
+            }
         }
 
         $count = count($cfg['productysku']);
 
-        // must align
-        foreach (['spendcartminrequired','spendcartmaxrequired'] as $k) {
-            if (!empty($cfg[$k]) && is_array($cfg[$k]) && count($cfg[$k]) !== $count) return false;
+        foreach (['spendcartminrequired', 'spendcartmaxrequired'] as $k) {
+            if (!empty($cfg[$k]) && is_array($cfg[$k]) && count($cfg[$k]) !== $count) {
+                return false;
+            }
         }
-        if (!empty($cfg['productydescription']) && count($cfg['productydescription']) !== $count) return false;
 
-        // numeric validation; min > 0; max >= min (unless max == 0)
+        if (!empty($cfg['productydescription']) && count($cfg['productydescription']) !== $count) {
+            return false;
+        }
+
         for ($i = 0; $i < $count; $i++) {
             $min = $cfg['spendcartminrequired'][$i] ?? null;
             $max = $cfg['spendcartmaxrequired'][$i] ?? 0;
 
-            if (!is_numeric($min)) return false;
-            if (!is_numeric($max) && $max !== null) return false;
+            if (!is_numeric($min)) {
+                return false;
+            }
+
+            if (!is_numeric($max) && $max !== null) {
+                return false;
+            }
 
             $min = (float)$min;
             $max = (float)$max;
 
-            if ($min <= 0) return false;
-            if ($max !== 0.0 && $max < $min) return false;
+            if ($min <= 0) {
+                return false;
+            }
+
+            if ($max !== 0.0 && $max < $min) {
+                return false;
+            }
         }
 
-        // ensure Y SKUs unique (isUnique returns true when duplicates exist)
-        if ($this->isUnique($cfg['productysku']) === true) return false;
+        if ($this->isUnique($cfg['productysku']) === true) {
+            return false;
+        }
 
         return true;
     }
@@ -130,28 +146,32 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
         $address = $quote->isVirtual()
             ? $quote->getBillingAddress()
             : $quote->getShippingAddress();
-        // subTotal is in base currency, excludes cart discounts but includes tax
-        $subTotal = (float) $address->getBaseSubtotalInclTax()
-            + (float) $address->getBaseDiscountAmount();
+
+        // Base currency, after discount, including tax
+        $subTotal = (float)$address->getBaseSubtotalInclTax()
+            + (float)$address->getBaseDiscountAmount();
 
         $cartData = $this->getCartItems();
 
         foreach ($productYSkus as $key => $ySku) {
-            $min = (float)$minThresholds[$key];
-            $max = isset($maxThresholds[$key]) && $maxThresholds[$key] !== '' ? (float)$maxThresholds[$key] : 0.0;
+            $min  = (float)$minThresholds[$key];
+            $max  = isset($maxThresholds[$key]) && $maxThresholds[$key] !== '' ? (float)$maxThresholds[$key] : 0.0;
             $desc = $productYDescriptions[$key] ?? (string)__('Free Product');
 
-            $meetsMin = $subTotal >= $min;
+            $meetsMin  = $subTotal >= $min;
             $withinMax = ($max == 0.0) ? true : ($subTotal <= $max);
             $qualifies = $meetsMin && $withinMax;
 
-            $this->log(sprintf('subtotal=%.2f, min=%.2f, max=%s -> qualifies=%s',
-                $subTotal, $min, ($max == 0.0 ? '∞' : number_format($max,2)), $qualifies ? 'yes' : 'no'
+            $this->log(sprintf(
+                'subtotal=%.2f, min=%.2f, max=%s -> qualifies=%s',
+                $subTotal,
+                $min,
+                ($max == 0.0 ? '∞' : number_format($max, 2)),
+                $qualifies ? 'yes' : 'no'
             ));
 
             if ($qualifies) {
                 if ($cartData && isset($cartData[$ySku])) {
-                    // Ensure qty is 1
                     $yQty = (int)$cartData[$ySku]['qty'];
                     if ($yQty > 1) {
                         $this->checkProductCartQuantity($cartData[$ySku]['itemid'], 1);
@@ -189,11 +209,11 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
                 'type'      => $item->getProduct()->getTypeId(),
                 'productid' => $item->getProduct()->getId(),
             ];
-            $byId[$item->getProduct()->getId()][]        = $item->getQty();
-            $bySku[$item->getProduct()->getSku()][]      = $item->getQty();
+            $byId[$item->getProduct()->getId()][]   = $item->getQty();
+            $bySku[$item->getProduct()->getSku()][] = $item->getQty();
         }
 
-        $cartData['cartItemQuantities']      = $byId;
+        $cartData['cartItemQuantities'] = $byId;
         $cartData['cartItemQuantitiesBySku'] = $bySku;
 
         $this->log(['SPENDXGETY' => $cartData]);
@@ -209,28 +229,32 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
     ): void {
         try {
             $qty = max(1, $qty);
-    
+
             $product = $this->_productRepository->get($productSku);
-            $productId = (int) $product->getId();
-    
-            $product->addCustomOption('is_free_gift', '1');
-    
+            $productId = (int)$product->getId();
+
+            $quote = $this->_cart->getQuote();
+
+            // Remember existing item IDs before adding the gift
+            $existingItemIds = [];
+            foreach ($quote->getAllItems() as $item) {
+                $existingItemIds[] = (int)$item->getItemId();
+            }
+
             $params = new \Magento\Framework\DataObject([
                 'product' => $productId,
                 'qty'     => $qty,
             ]);
-    
+
             $this->_cart->addProduct($product, $params);
-    
+
             $quote = $this->_cart->getQuote();
-    
+
+            // Find the newly added item and force it to zero price
             foreach ($quote->getAllItems() as $item) {
-                $giftOption = $item->getOptionByCode('is_free_gift');
-    
                 if (
-                    (int) $item->getProductId() === $productId &&
-                    $giftOption &&
-                    $giftOption->getValue() === '1'
+                    (int)$item->getProductId() === $productId &&
+                    !in_array((int)$item->getItemId(), $existingItemIds, true)
                 ) {
                     $item->setCustomPrice(0);
                     $item->setOriginalCustomPrice(0);
@@ -238,11 +262,11 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
                     $item->getProduct()->setIsSuperMode(true);
                 }
             }
-    
+
             $quote->collectTotals();
             $this->_cart->save();
             $this->recollectTotals();
-    
+
             $this->addMessage(
                 __('Your %1 has been added to your cart.', $productYDescription),
                 'notice'
@@ -280,13 +304,23 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
     {
         $newText = (string)$newMessage;
         foreach ($this->getMessages() as $message) {
-            if ($newText === (string)$message) return false;
+            if ($newText === (string)$message) {
+                return false;
+            }
         }
+
         switch ($messageType) {
-            case 'error':   $this->_messageManager->addErrorMessage($newText); break;
-            case 'success': $this->_messageManager->addSuccessMessage($newText); break;
-            case 'warning': $this->_messageManager->addWarningMessage($newText); break;
-            default:        $this->_messageManager->addNoticeMessage($newText);
+            case 'error':
+                $this->_messageManager->addErrorMessage($newText);
+                break;
+            case 'success':
+                $this->_messageManager->addSuccessMessage($newText);
+                break;
+            case 'warning':
+                $this->_messageManager->addWarningMessage($newText);
+                break;
+            default:
+                $this->_messageManager->addNoticeMessage($newText);
         }
     }
 
@@ -309,14 +343,23 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
 
     public function log($data): void
     {
-        if (!$this->_debug) return;
-        $this->_logger->debug('debug SPENDXGETY : ' . (is_array($data) ? print_r($data, true) : $data));
+        if (!$this->_debug) {
+            return;
+        }
+
+        $this->_logger->debug(
+            'debug SPENDXGETY : ' . (is_array($data) ? print_r($data, true) : $data)
+        );
     }
 
     private function csvToArray($csv, bool $keepZero = false): array
     {
-        if ($csv === null) return [];
+        if ($csv === null) {
+            return [];
+        }
+
         $parts = array_map('trim', explode(',', (string)$csv));
+
         return array_values(array_filter($parts, function ($v) use ($keepZero) {
             return $keepZero ? ($v !== '') : ($v !== '' && $v !== '0');
         }));
