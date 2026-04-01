@@ -130,7 +130,7 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
         $address = $quote->isVirtual()
             ? $quote->getBillingAddress()
             : $quote->getShippingAddress();
-        // subTotal is in base currency
+        // subTotal is in base currency, excludes cart discounts but includes tax
         $subTotal = (float) $address->getBaseSubtotalInclTax()
             + (float) $address->getBaseDiscountAmount();
 
