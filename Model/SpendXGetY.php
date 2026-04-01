@@ -126,9 +126,13 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
         $maxThresholds        = $cfg['spendcartmaxrequired'];
         $productYDescriptions = $cfg['productydescription'];
 
-        // Toggle base vs store subtotal here if needed:
-        // $subTotal = (float)$this->_cart->getQuote()->getBaseSubtotalWithDiscount(); // base currency
-        $subTotal = (float)$this->_cart->getQuote()->getSubtotalWithDiscount();       // store currency (default)
+        $quote = $this->_cart->getQuote();
+        $address = $quote->isVirtual()
+            ? $quote->getBillingAddress()
+            : $quote->getShippingAddress();
+        // subTotal is in base currency
+        $subTotal = (float) $address->getBaseSubtotalInclTax()
+            + (float) $address->getBaseDiscountAmount();
 
         $cartData = $this->getCartItems();
 
