@@ -202,18 +202,60 @@ class SpendXGetY extends \Magento\Framework\Model\AbstractModel
         return count($cartData) > 0 ? $cartData : false;
     }
 
-    protected function addProductToCart($productSku, $qty = 1, $productYDescription = 'Free Product'): void
-    {
-        $product   = $this->_productRepository->get($productSku);
-        $productID = (int)$product->getId();
-
-        $params = ['product' => $productID, 'qty' => (int)$qty];
-
-        $this->_cart->addProduct($product, $params);
-        $this->_cart->save();
-        $this->recollectTotals();
-
-        $this->addMessage(__('Your %1 has been added to your cart.', $productYDescription), 'notice');
+    protected function addProductToCart(
+        string $productSku,
+        int $qty = 1,
+        string $productYDescription = 'Free Product'
+    ): void {
+        try {
+            $qty = max(1, $qty);
+    
+            $product = $this->_productRepository->get($productSku);
+            $productId = (int) $product->getId();
+    
+            $product->addCustomOption('is_free_gift', '1');
+    
+            $params = new \Magento\Framework\DataObject([
+                'product' => $productId,
+                'qty'     => $qty,
+            ]);
+    
+            $this->_cart->addProduct($product, $params);
+    
+            $quote = $this->_cart->getQuote();
+    
+            foreach ($quote->getAllItems() as $item) {
+                $giftOption = $item->getOptionByCode('is_free_gift');
+    
+                if (
+                    (int) $item->getProductId() === $productId &&
+                    $giftOption &&
+                    $giftOption->getValue() === '1'
+                ) {
+                    $item->setCustomPrice(0);
+                    $item->setOriginalCustomPrice(0);
+                    $item->setNoDiscount(true);
+                    $item->getProduct()->setIsSuperMode(true);
+                }
+            }
+    
+            $quote->collectTotals();
+            $this->_cart->save();
+            $this->recollectTotals();
+    
+            $this->addMessage(
+                __('Your %1 has been added to your cart.', $productYDescription),
+                'notice'
+            );
+        } catch (\Throwable $e) {
+            $this->_logger->error(
+                sprintf(
+                    'Failed to add free product "%s" to cart: %s',
+                    $productSku,
+                    $e->getMessage()
+                )
+            );
+        }
     }
 
     protected function removeProductFromCart($itemId, $productYDescription = 'Free Product'): void
